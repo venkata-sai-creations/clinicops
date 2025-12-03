@@ -1,10 +1,11 @@
-resource "random_id" "suffix" {
-  byte_length = 4
-}
+﻿module "vpc" {
+  source = "./modules/vpc"
 
-resource "aws_s3_bucket" "placeholder" {
-  bucket = "clinicops-placeholder-${random_id.suffix.hex}"
-  tags = {
-    Name = "clinicops-placeholder"
-  }
+  prefix = "clinicops"
+
+  public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+  private_subnet_cidrs = ["10.0.3.0/24", "10.0.4.0/24"]
+
+  # azs can be left empty to allow AWS provider to pick available AZs
+  enable_nat = false
 }
