@@ -1,4 +1,4 @@
-terraform {
+﻿terraform {
   backend "s3" {
     bucket         = "clinicops-tfstate-cd194a41"
     key            = "clinicops/terraform.tfstate"
