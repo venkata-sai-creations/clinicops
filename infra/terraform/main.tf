@@ -1,102 +1,11 @@
-variable "prefix" { type = string }
-variable "vpc_cidr" { type = string, default = "10.0.0.0/16" }
-variable "public_subnet_cidrs" { type = list(string) }
-variable "private_subnet_cidrs" { type = list(string) }
-variable "azs" { type = list(string) }
-variable "enable_nat" { type = bool, default = false } # keep false to avoid NAT costs
-variable "tags" { type = map(string), default = {} }
+﻿module "vpc" {
+  source = "./modules/vpc"
 
-resource "aws_vpc" "this" {
-  cidr_block = var.vpc_cidr
-  enable_dns_support   = true
-  enable_dns_hostnames = true
-  tags = merge({
-    Name = "${var.prefix}-vpc"
-  }, var.tags)
+  prefix = "clinicops"
+
+  public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+  private_subnet_cidrs = ["10.0.3.0/24", "10.0.4.0/24"]
+
+  # azs can be left empty to allow AWS provider to pick available AZs
+  enable_nat = false
 }
-
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.this.id
-  tags = { Name = "${var.prefix}-igw" }
-}
-
-# Public subnets
-resource "aws_subnet" "public" {
-  for_each = { for idx, cidr in var.public_subnet_cidrs : idx => cidr }
-  vpc_id            = aws_vpc.this.id
-  cidr_block        = each.value
-  availability_zone = element(var.azs, tonumber(each.key))
-  map_public_ip_on_launch = true
-  tags = {
-    Name = "${var.prefix}-public-${each.key}"
-  }
-}
-
-# Private subnets
-resource "aws_subnet" "private" {
-  for_each = { for idx, cidr in var.private_subnet_cidrs : idx => cidr }
-  vpc_id            = aws_vpc.this.id
-  cidr_block        = each.value
-  availability_zone = element(var.azs, tonumber(each.key))
-  map_public_ip_on_launch = false
-  tags = {
-    Name = "${var.prefix}-private-${each.key}"
-  }
-}
-
-# Public route table and association
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.this.id
-  tags = { Name = "${var.prefix}-public-rt" }
-}
-
-resource "aws_route" "public_internet_access" {
-  route_table_id         = aws_route_table.public.id
-  destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = aws_internet_gateway.igw.id
-}
-
-resource "aws_route_table_association" "public_assoc" {
-  for_each = aws_subnet.public
-  subnet_id      = each.value.id
-  route_table_id = aws_route_table.public.id
-}
-
-# Private route table
-resource "aws_route_table" "private" {
-  vpc_id = aws_vpc.this.id
-  tags = { Name = "${var.prefix}-private-rt" }
-}
-
-resource "aws_route_table_association" "private_assoc" {
-  for_each = aws_subnet.private
-  subnet_id      = each.value.id
-  route_table_id = aws_route_table.private.id
-}
-
-# OPTIONAL: NAT Gateway for private subnet egress (costs money)
-# If you want NAT gateways later, set enable_nat = true and provide allocation IDs or allow this module to create Elastic IPs.
-#
-# resource "aws_eip" "nat" {
-#   count = var.enable_nat ? length(aws_subnet.public) : 0
-#   vpc = true
-#   tags = { Name = "${var.prefix}-nat-eip-${count.index}" }
-# }
-#
-# resource "aws_nat_gateway" "nat" {
-#   count = var.enable_nat ? length(aws_subnet.public) : 0
-#   allocation_id = aws_eip.nat[count.index].id
-#   subnet_id = element(aws_subnet.public.*.id, count.index)
-#   tags = { Name = "${var.prefix}-nat-${count.index}" }
-# }
-#
-# resource "aws_route" "private_nat" {
-#   count = var.enable_nat ? length(aws_subnet.private) : 0
-#   route_table_id         = aws_route_table.private.id
-#   destination_cidr_block = "0.0.0.0/0"
-#   nat_gateway_id         = element(aws_nat_gateway.nat.*.id, count.index)
-# }
-
-output "vpc_id" { value = aws_vpc.this.id }
-output "public_subnet_ids" { value = [for s in aws_subnet.public : s.id] }
-output "private_subnet_ids" { value = [for s in aws_subnet.private : s.id] }
