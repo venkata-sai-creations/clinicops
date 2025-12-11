@@ -1,0 +1,50 @@
+﻿name: Build and Push Docker to ECR
+
+on:
+  push:
+    paths:
+      - 'app/**'
+      - '.github/workflows/docker-build-push.yml'
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      ECR_REPOSITORY: clinicops-app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Get ECR repo URI
+        id: ecr
+        run: |
+          REPO_URI=$(aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" --query "repositories[0].repositoryUri" --output text)
+          echo "REPO_URI=$REPO_URI" >> $GITHUB_ENV
+
+      - name: Build Docker image
+        run: |
+          IMAGE_TAG=sha-$(echo "$GITHUB_SHA" | cut -c1-7)
+          echo "Building image ${REPO_URI}:${IMAGE_TAG}"
+          docker build -t "${REPO_URI}:${IMAGE_TAG}" -t "${REPO_URI}:latest" ./app
+
+      - name: Push Docker image
+        run: |
+          IMAGE_TAG=sha-$(echo "$GITHUB_SHA" | cut -c1-7)
+          echo "Pushing ${REPO_URI}:${IMAGE_TAG} and latest"
+          docker push "${REPO_URI}:${IMAGE_TAG}"
+          docker push "${REPO_URI}:latest"
+
+      - name: Output image
+        run: echo "pushed ${REPO_URI}:sha-$(echo \"$GITHUB_SHA\" | cut -c1-7)"
